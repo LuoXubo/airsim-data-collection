@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>着陆轨迹3D可视化</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: #0a0a1a;
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            max-width: 320px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button.pause {
+            background: #ff9800;
+        }
+        .trajectory-btn {
+            background: #2196F3;
+            display: inline-block;
+            width: 45px;
+            margin: 2px;
+        }
+        .trajectory-btn.active {
+            background: #1565C0;
+            font-weight: bold;
+        }
+        #info {
+            margin-top: 15px;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .phase {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-right: 5px;
+            border-radius: 2px;
+        }
+        #speedControl, #cameraControl, #fileUpload {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #444;
+        }
+        #speedControl input, #cameraControl input {
+            width: 100%;
+            margin-top: 3px;
+        }
+        .control-label {
+            font-size: 11px;
+            color: #aaa;
+        }
+        #fileInput {
+            display: none;
+        }
+        .file-label {
+            background: #9C27B0;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: inline-block;
+            font-size: 13px;
+        }
+        .file-label:hover {
+            background: #7B1FA2;
+        }
+        #fileStatus {
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="controls">
+        <h3 style="margin-top: 0;">着陆轨迹控制</h3>
+        
+        <div id="fileUpload">
+            <label class="file-label" for="fileInput">📁 加载轨迹文件</label>
+            <input type="file" id="fileInput" accept=".txt" multiple>
+            <div id="fileStatus">未加载文件 (或使用内置示例)</div>
+        </div>
+        
+        <div>
+            <button id="playBtn">▶ 播放</button>
+            <button id="resetBtn">↻ 重置</button>
+        </div>
+        
+        <div id="speedControl">
+            <label>速度: <span id="speedValue">慢</span></label>
+            <input type="range" id="speedSlider" min="1" max="10" value="3" step="1">
+        </div>
+        
+        <div id="cameraControl">
+            <label>相机控制:</label>
+            <div class="control-label">距离: <span id="distanceValue">250</span></div>
+            <input type="range" id="distanceSlider" min="100" max="500" value="250" step="10">
+            <div class="control-label">水平角度: <span id="angleValue">45°</span></div>
+            <input type="range" id="angleSlider" min="-180" max="180" value="45" step="5">
+            <div class="control-label">高度角: <span id="elevationValue">30°</span></div>
+            <input type="range" id="elevationSlider" min="-30" max="80" value="30" step="5">
+            <button id="resetCameraBtn" style="margin-top: 5px; padding: 5px 10px; font-size: 12px;">重置视角</button>
+        </div>
+        
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #444;">
+            <label>选择轨迹:</label><br>
+            <div id="trajectoryBtns"></div>
+        </div>
+        
+        <div id="info">
+            <div><span class="phase" style="background: #00ff00;"></span>阶段1: 巡航</div>
+            <div><span class="phase" style="background: #ffff00;"></span>阶段2: 过渡</div>
+            <div><span class="phase" style="background: #ff0000;"></span>阶段3: 降落</div>
+            <div style="margin-top: 10px;">
+                <strong>当前信息:</strong><br>
+                <span id="currentInfo">等待开始...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 解析轨迹文件 (CSV格式: x,y,z,roll,pitch,yaw)
+        function parseTrajectoryFile(text) {
+            const lines = text.trim().split('\n');
+            const points = [];
+            
+            for (const line of lines) {
+                const values = line.split(',').map(v => parseFloat(v.trim()));
+                if (values.length >= 6 && !values.some(isNaN)) {
+                    points.push({
+                        x: values[0],
+                        y: values[1],
+                        z: values[2],
+                        roll: values[3],
+                        pitch: values[4],
+                        yaw: values[5],
+                        phase: 1  // 将根据位置计算
+                    });
+                }
+            }
+            
+            // 根据点的位置分配阶段
+            const total = points.length;
+            const stage1End = Math.floor(total * 0.4);
+            const stage2End = Math.floor(total * 0.7);
+            
+            points.forEach((p, i) => {
+                if (i < stage1End) p.phase = 1;
+                else if (i < stage2End) p.phase = 2;
+                else p.phase = 3;
+            });
+            
+            return points;
+        }
+
+        // 生成示例轨迹数据
+        function generateSampleTrajectory(id) {
+            const points = [];
+            const numPoints = 600;
+            const startPos = [0, 0, 0];
+            const endPos = [400, 0, 50];
+            
+            const stage1Points = Math.floor(numPoints * 0.4);
+            const stage2Points = Math.floor(numPoints * 0.3);
+            const stage3Points = numPoints - stage1Points - stage2Points;
+            
+            const pitchStage1 = -60 * Math.PI / 180;
+            const pitchStage2Start = -60 * Math.PI / 180;
+            const pitchStage2End = -90 * Math.PI / 180;
+            const pitchStage3 = -90 * Math.PI / 180;
+            
+            let idx = 0;
+            
+            // Stage 1: Cruise
+            for (let i = 0; i < stage1Points; i++) {
+                const t = i / stage1Points;
+                const x = startPos[0] + (endPos[0] * 0.5) * t;
+                const y = startPos[1] + Math.sin(t * Math.PI * 3) * 5;
+                const z = startPos[2];
+                
+                points.push({
+                    x, y, z,
+                    roll: 0,
+                    pitch: pitchStage1,
+                    yaw: 0,
+                    phase: 1
+                });
+            }
+            
+            // Stage 2: Transition
+            const stage1EndX = endPos[0] * 0.5;
+            const stage2EndX = endPos[0] * 0.8;
+            const stage2EndZ = endPos[2] * 0.7;
+            
+            for (let i = 0; i < stage2Points; i++) {
+                const t = i / stage2Points;
+                const x = stage1EndX + (stage2EndX - stage1EndX) * t;
+                const y = Math.sin((i + stage1Points) / numPoints * Math.PI * 3) * 3;
+                const z = stage2EndZ * (t * t);
+                const pitch = pitchStage2Start + (pitchStage2End - pitchStage2Start) * t;
+                
+                points.push({
+                    x, y, z,
+                    roll: 0,
+                    pitch,
+                    yaw: 0,
+                    phase: 2
+                });
+            }
+            
+            // Stage 3: Landing
+            for (let i = 0; i < stage3Points; i++) {
+                const t = i / stage3Points;
+                const x = stage2EndX + (endPos[0] - stage2EndX) * t;
+                const y = 0;
+                const z = stage2EndZ + (endPos[2] - stage2EndZ) * t;
+                
+                points.push({
+                    x, y, z,
+                    roll: 0,
+                    pitch: pitchStage3,
+                    yaw: 0,
+                    phase: 3
+                });
+            }
+            
+            return {id, points};
+        }
+
+        // 初始化轨迹数据
+        let trajectories = [generateSampleTrajectory(1)];
+
+        // 文件上传处理
+        const fileInput = document.getElementById('fileInput');
+        const fileStatus = document.getElementById('fileStatus');
+        
+        fileInput.addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (files.length === 0) return;
+            
+            trajectories = [];
+            fileStatus.textContent = `加载中... (0/${files.length})`;
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const text = await file.text();
+                const points = parseTrajectoryFile(text);
+                
+                if (points.length > 0) {
+                    trajectories.push({id: i + 1, points});
+                    fileStatus.textContent = `加载中... (${i+1}/${files.length})`;
+                }
+            }
+            
+            if (trajectories.length > 0) {
+                fileStatus.textContent = `✓ 已加载 ${trajectories.length} 条轨迹`;
+                initializeVisualization();
+            } else {
+                fileStatus.textContent = `❌ 未能加载有效轨迹`;
+                trajectories = [generateSampleTrajectory(1)];
+            }
+        });
+
+        // Three.js 场景设置
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+        let cameraDistance = 250;
+        let cameraAngle = 45;
+        let cameraElevation = 30;
+        const lookAtPoint = new THREE.Vector3(200, 0, 25);
+        
+        function updateCameraPosition() {
+            const angleRad = THREE.MathUtils.degToRad(cameraAngle);
+            const elevationRad = THREE.MathUtils.degToRad(cameraElevation);
+            
+            camera.position.x = lookAtPoint.x + cameraDistance * Math.cos(elevationRad) * Math.cos(angleRad);
+            camera.position.y = lookAtPoint.y + cameraDistance * Math.cos(elevationRad) * Math.sin(angleRad);
+            camera.position.z = lookAtPoint.z + cameraDistance * Math.sin(elevationRad);
+            
+            camera.lookAt(lookAtPoint);
+        }
+        
+        updateCameraPosition();
+        
+        const renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('container').appendChild(renderer.domElement);
+        
+        // 光照
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(200, -200, 200);
+        scene.add(directionalLight);
+        
+        // 地面网格
+        const gridHelper = new THREE.GridHelper(600, 30, 0x444444, 0x222222);
+        gridHelper.rotation.x = Math.PI / 2;
+        gridHelper.position.set(200, 0, 0);
+        scene.add(gridHelper);
+        
+        // 轨迹线和飞行器
+        let trajectoryLines = [];
+        let aircrafts = [];
+        const phaseColors = [0x00ff00, 0xffff00, 0xff0000];
+        
+        function initializeVisualization() {
+            // 清除旧的可视化对象
+            trajectoryLines.forEach(line => scene.remove(line));
+            aircrafts.forEach(ac => scene.remove(ac));
+            trajectoryLines = [];
+            aircrafts = [];
+            
+            trajectories.forEach((traj, idx) => {
+                const geometry = new THREE.BufferGeometry();
+                const positions = [];
+                const colors = [];
+                
+                traj.points.forEach(p => {
+                    positions.push(p.x, p.y, p.z);
+                    const color = new THREE.Color(phaseColors[p.phase - 1]);
+                    colors.push(color.r, color.g, color.b);
+                });
+                
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                
+                const material = new THREE.LineBasicMaterial({
+                    vertexColors: true,
+                    linewidth: 2
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                line.visible = false;
+                scene.add(line);
+                trajectoryLines.push(line);
+                
+                // 飞行器
+                const aircraftGeom = new THREE.ConeGeometry(2, 6, 8);
+                const aircraftMat = new THREE.MeshPhongMaterial({color: 0x00aaff});
+                const aircraft = new THREE.Mesh(aircraftGeom, aircraftMat);
+                aircraft.visible = false;
+                scene.add(aircraft);
+                aircrafts.push(aircraft);
+            });
+            
+            // 更新UI
+            updateTrajectoryButtons();
+            selectTrajectory(0);
+        }
+        
+        // 动画控制
+        let animating = false;
+        let currentTrajectory = 0;
+        let currentPoint = 0;
+        let frameCounter = 0;
+        let framesPerPoint = 20;
+        
+        // UI元素
+        const playBtn = document.getElementById('playBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const trajectoryBtns = document.getElementById('trajectoryBtns');
+        const currentInfo = document.getElementById('currentInfo');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const distanceSlider = document.getElementById('distanceSlider');
+        const distanceValue = document.getElementById('distanceValue');
+        const angleSlider = document.getElementById('angleSlider');
+        const angleValue = document.getElementById('angleValue');
+        const elevationSlider = document.getElementById('elevationSlider');
+        const elevationValue = document.getElementById('elevationValue');
+        const resetCameraBtn = document.getElementById('resetCameraBtn');
+        
+        const speedLabels = {
+            1: '极慢', 2: '很慢', 3: '慢', 4: '较慢', 5: '中等',
+            6: '较快', 7: '快', 8: '很快', 9: '极快', 10: '最快'
+        };
+        
+        speedSlider.oninput = function() {
+            const speed = parseInt(this.value);
+            framesPerPoint = 22 - speed * 2;
+            speedValue.textContent = speedLabels[speed];
+        };
+        
+        // 相机控制
+        distanceSlider.oninput = function() {
+            cameraDistance = parseInt(this.value);
+            distanceValue.textContent = cameraDistance;
+            updateCameraPosition();
+        };
+        
+        angleSlider.oninput = function() {
+            cameraAngle = parseInt(this.value);
+            angleValue.textContent = cameraAngle + '°';
+            updateCameraPosition();
+        };
+        
+        elevationSlider.oninput = function() {
+            cameraElevation = parseInt(this.value);
+            elevationValue.textContent = cameraElevation + '°';
+            updateCameraPosition();
+        };
+        
+        resetCameraBtn.onclick = function() {
+            cameraDistance = 250;
+            cameraAngle = 45;
+            cameraElevation = 30;
+            distanceSlider.value = cameraDistance;
+            angleSlider.value = cameraAngle;
+            elevationSlider.value = cameraElevation;
+            distanceValue.textContent = cameraDistance;
+            angleValue.textContent = cameraAngle + '°';
+            elevationValue.textContent = cameraElevation + '°';
+            updateCameraPosition();
+        };
+        
+        // 鼠标拖动控制
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        
+        renderer.domElement.addEventListener('mousedown', function(e) {
+            isDragging = true;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+        
+        renderer.domElement.addEventListener('mousemove', function(e) {
+            if (isDragging) {
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                cameraAngle += deltaX * 0.3;
+                cameraElevation -= deltaY * 0.3;
+                cameraElevation = Math.max(-30, Math.min(80, cameraElevation));
+                
+                angleSlider.value = Math.round(cameraAngle);
+                elevationSlider.value = Math.round(cameraElevation);
+                angleValue.textContent = Math.round(cameraAngle) + '°';
+                elevationValue.textContent = Math.round(cameraElevation) + '°';
+                
+                updateCameraPosition();
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            }
+        });
+        
+        renderer.domElement.addEventListener('mouseup', () => isDragging = false);
+        renderer.domElement.addEventListener('mouseleave', () => isDragging = false);
+        
+        renderer.domElement.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            cameraDistance += e.deltaY * 0.2;
+            cameraDistance = Math.max(100, Math.min(500, cameraDistance));
+            distanceSlider.value = Math.round(cameraDistance);
+            distanceValue.textContent = Math.round(cameraDistance);
+            updateCameraPosition();
+        });
+        
+        function updateTrajectoryButtons() {
+            trajectoryBtns.innerHTML = '';
+            trajectories.forEach((traj, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'trajectory-btn';
+                btn.textContent = idx + 1;
+                btn.id = `traj-btn-${idx}`;
+                btn.onclick = () => selectTrajectory(idx);
+                trajectoryBtns.appendChild(btn);
+            });
+        }
+        
+        function selectTrajectory(idx) {
+            trajectoryLines.forEach((line, i) => line.visible = (i === idx));
+            aircrafts.forEach((ac, i) => ac.visible = (i === idx));
+            
+            document.querySelectorAll('.trajectory-btn').forEach((btn, i) => {
+                btn.classList.toggle('active', i === idx);
+            });
+            
+            currentTrajectory = idx;
+            currentPoint = 0;
+            frameCounter = 0;
+            updateAircraft();
+        }
+        
+        playBtn.onclick = () => {
+            animating = !animating;
+            playBtn.textContent = animating ? '⏸ 暂停' : '▶ 播放';
+            playBtn.className = animating ? 'pause' : '';
+        };
+        
+        resetBtn.onclick = () => {
+            currentPoint = 0;
+            frameCounter = 0;
+            animating = false;
+            playBtn.textContent = '▶ 播放';
+            playBtn.className = '';
+            updateAircraft();
+        };
+        
+        function updateAircraft() {
+            const traj = trajectories[currentTrajectory];
+            if (currentPoint >= traj.points.length) {
+                animating = false;
+                playBtn.textContent = '▶ 播放';
+                playBtn.className = '';
+                return;
+            }
+            
+            const p = traj.points[currentPoint];
+            const aircraft = aircrafts[currentTrajectory];
+            aircraft.position.set(p.x, p.y, p.z);
+            
+            // 设置飞行器姿态 (pitch控制俯仰)
+            aircraft.rotation.x = p.pitch;
+            aircraft.rotation.y = p.yaw;
+            aircraft.rotation.z = p.roll;
+            
+            const phaseNames = ['巡航', '过渡', '降落'];
+            const pitchDeg = (p.pitch * 180 / Math.PI).toFixed(1);
+            currentInfo.innerHTML = `
+                轨迹: ${currentTrajectory + 1}<br>
+                点: ${currentPoint + 1}/${traj.points.length}<br>
+                阶段: ${phaseNames[p.phase - 1]}<br>
+                位置: (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})<br>
+                俯仰角: ${pitchDeg}°
+            `;
+        }
+        
+        // 初始化
+        initializeVisualization();
+        
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (animating) {
+                frameCounter++;
+                if (frameCounter >= framesPerPoint) {
+                    frameCounter = 0;
+                    currentPoint++;
+                    if (currentPoint < trajectories[currentTrajectory].points.length) {
+                        updateAircraft();
+                    } else {
+                        animating = false;
+                        playBtn.textContent = '▶ 播放';
+                        playBtn.className = '';
+                    }
+                }
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
