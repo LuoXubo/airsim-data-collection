@@ -151,6 +151,7 @@
 
     <script>
         // 解析轨迹文件 (CSV格式: x,y,z,roll,pitch,yaw)
+        // 注意: 原始数据中z越大表示高度越低,需要反转z轴
         function parseTrajectoryFile(text) {
             const lines = text.trim().split('\n');
             const points = [];
@@ -161,7 +162,7 @@
                     points.push({
                         x: values[0],
                         y: values[1],
-                        z: values[2],
+                        z: -values[2],  // 反转z轴: z越大→高度越低,所以取负值
                         roll: values[3],
                         pitch: values[4],
                         yaw: values[5],
@@ -185,11 +186,12 @@
         }
 
         // 生成示例轨迹数据
+        // 注意: z越大表示高度越低,所以示例中z从0(高)到50(低)
         function generateSampleTrajectory(id) {
             const points = [];
             const numPoints = 600;
-            const startPos = [0, 0, 0];
-            const endPos = [400, 0, 50];
+            const startPos = [0, 0, 0];  // 起点在高处(z=0)
+            const endPos = [400, 0, -50];  // 终点在低处(z=-50,反转后显示)
             
             const stage1Points = Math.floor(numPoints * 0.4);
             const stage2Points = Math.floor(numPoints * 0.3);
@@ -202,12 +204,12 @@
             
             let idx = 0;
             
-            // Stage 1: Cruise
+            // Stage 1: Cruise (保持高度)
             for (let i = 0; i < stage1Points; i++) {
                 const t = i / stage1Points;
                 const x = startPos[0] + (endPos[0] * 0.5) * t;
                 const y = startPos[1] + Math.sin(t * Math.PI * 3) * 5;
-                const z = startPos[2];
+                const z = startPos[2];  // 保持在高处
                 
                 points.push({
                     x, y, z,
@@ -218,16 +220,16 @@
                 });
             }
             
-            // Stage 2: Transition
+            // Stage 2: Transition (开始下降)
             const stage1EndX = endPos[0] * 0.5;
             const stage2EndX = endPos[0] * 0.8;
-            const stage2EndZ = endPos[2] * 0.7;
+            const stage2EndZ = endPos[2] * 0.7;  // 下降到70%高度
             
             for (let i = 0; i < stage2Points; i++) {
                 const t = i / stage2Points;
                 const x = stage1EndX + (stage2EndX - stage1EndX) * t;
                 const y = Math.sin((i + stage1Points) / numPoints * Math.PI * 3) * 3;
-                const z = stage2EndZ * (t * t);
+                const z = stage2EndZ * (t * t);  // 二次下降
                 const pitch = pitchStage2Start + (pitchStage2End - pitchStage2Start) * t;
                 
                 points.push({
@@ -239,7 +241,7 @@
                 });
             }
             
-            // Stage 3: Landing
+            // Stage 3: Landing (继续下降到地面)
             for (let i = 0; i < stage3Points; i++) {
                 const t = i / stage3Points;
                 const x = stage2EndX + (endPos[0] - stage2EndX) * t;
