@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import Axes3D  # 导入三维绘图模块
 import cv2
 import os
 
-traj_dir = 'data\\trajs'
+traj_dir = 'data\\j_curve_trajectories'
 save_dir = 'data\\collected_from_path'
 
 traj_files = sorted([f for f in os.listdir(traj_dir) if f.endswith('.txt')])
