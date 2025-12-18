@@ -121,7 +121,7 @@ class JCurveTrajectoryGenerator:
                 'horizontal_distance': rand_landing_x - rand_start_x,  # 根据起点和着陆点计算
                 'final_height': np.random.uniform(8, 12),
                 'turn_start_ratio': np.random.uniform(0.7, 0.8),
-                'num_points': np.random.randint(500, 700),
+                'num_points': np.random.randint(190, 210),
                 'pitch_start': np.random.uniform(-65, -55),
                 'pitch_end': -90
             }
@@ -225,7 +225,7 @@ class JCurveTrajectoryGenerator:
         fig = plt.figure(figsize=(15, 5))
         
         # 侧视图（X-Z平面）
-        ax1 = fig.add_subplot(131)
+        ax1 = fig.add_subplot(121)
         for traj in trajectories:
             positions = np.array(traj['positions'])
             ax1.plot(positions[:, 0], positions[:, 2], alpha=0.6, linewidth=1.5)
@@ -236,7 +236,7 @@ class JCurveTrajectoryGenerator:
         ax1.set_title(f'{len(trajectories)} J-Curve Trajectories (Side View)')
         
         # 3D视图
-        ax2 = fig.add_subplot(132, projection='3d')
+        ax2 = fig.add_subplot(122, projection='3d')
         for traj in trajectories:
             positions = np.array(traj['positions'])
             ax2.plot(positions[:, 0], positions[:, 1], positions[:, 2], alpha=0.6, linewidth=1)
@@ -246,19 +246,19 @@ class JCurveTrajectoryGenerator:
         ax2.invert_zaxis()
         ax2.set_title('3D View')
         
-        # 俯视图（X-Y平面）- 显示不同的起点和着陆点
-        ax3 = fig.add_subplot(133)
-        for traj in trajectories:
-            positions = np.array(traj['positions'])
-            # 标记起点和终点
-            ax3.plot(positions[:, 0], positions[:, 1], alpha=0.5, linewidth=1.5)
-            ax3.scatter(positions[0, 0], positions[0, 1], c='green', s=50, marker='o', alpha=0.7)  # 起点
-            ax3.scatter(positions[-1, 0], positions[-1, 1], c='red', s=50, marker='x', alpha=0.7)  # 终点
-        ax3.set_xlabel('X (Horizontal Distance)')
-        ax3.set_ylabel('Y (Horizontal Distance)')
-        ax3.grid(True, alpha=0.3)
-        ax3.set_title('Top View (Green: Start, Red: Landing)')
-        ax3.legend(['Trajectories', 'Start Points', 'Landing Points'], loc='best')
+        # # 俯视图（X-Y平面）- 显示不同的起点和着陆点
+        # ax3 = fig.add_subplot(133)
+        # for traj in trajectories:
+        #     positions = np.array(traj['positions'])
+        #     # 标记起点和终点
+        #     ax3.plot(positions[:, 0], positions[:, 1], alpha=0.5, linewidth=1.5)
+        #     ax3.scatter(positions[0, 0], positions[0, 1], c='green', s=50, marker='o', alpha=0.7)  # 起点
+        #     ax3.scatter(positions[-1, 0], positions[-1, 1], c='red', s=50, marker='x', alpha=0.7)  # 终点
+        # ax3.set_xlabel('X (Horizontal Distance)')
+        # ax3.set_ylabel('Y (Horizontal Distance)')
+        # ax3.grid(True, alpha=0.3)
+        # ax3.set_title('Top View (Green: Start, Red: Landing)')
+        # ax3.legend(['Trajectories', 'Start Points', 'Landing Points'], loc='best')
         
         plt.tight_layout()
         
@@ -272,24 +272,11 @@ class JCurveTrajectoryGenerator:
 # ===== 使用示例 =====
 if __name__ == "__main__":
     # 创建生成器
-    generator = JCurveTrajectoryGenerator(save_dir='data\\j_curve_trajectories')
-    
-    # 生成单条轨迹并可视化
-    # print("Generating single trajectory example...")
-    # single_trajectory = generator.generate_trajectory(
-    #     start_x=0,
-    #     start_y=0,
-    #     start_z=0,
-    #     landing_x=300,
-    #     landing_y=0,
-    #     final_height=10,
-    #     num_points=600
-    # )
-    # generator.visualize_trajectory(single_trajectory, save_fig=True, fig_name='single_j_curve.png')
+    generator = JCurveTrajectoryGenerator(save_dir='data\\trajectories')
     
     # 生成多条轨迹
     print("\nGenerating multiple trajectories...")
-    num_trajectories = 1  # 可以修改这个数字来控制生成轨迹的数量
+    num_trajectories = 200  # 可以修改这个数字来控制生成轨迹的数量
     trajectories = generator.generate_multiple_trajectories(num_trajectories=num_trajectories)
     
     # 保存轨迹
