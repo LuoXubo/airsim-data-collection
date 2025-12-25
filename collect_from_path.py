@@ -8,8 +8,8 @@ from mpl_toolkits.mplot3d import Axes3D  # 导入三维绘图模块
 import cv2
 import os
 
-traj_dir = 'data\\j_curve_trajectories'
-save_dir = 'data\\collected_from_path'
+traj_dir = 'data\\trajectories'
+save_dir = 'data\\captured_images_trajectories_tum'
 
 traj_files = sorted([f for f in os.listdir(traj_dir) if f.endswith('.txt')])
 
@@ -23,11 +23,12 @@ print("初始位置: x={}, y={}, z={}".format(pose.position.x_val, pose.position
 time.sleep(2)
 # timestamp = time.time()
 
-for traj_file in traj_files:
+for traj_idx, traj_file in enumerate(traj_files[:5]):
     pose = initial_pose
     print(f"Processing trajectory file: {traj_file}")
     
-    save_name = f"collected_{traj_file}".split('.')[0]
+    # 使用 trajectory_1, trajectory_2, ... 格式命名
+    save_name = f"trajectory_{traj_idx + 1}"
     image_save_path = os.path.join(save_dir, save_name, 'images')
     if not os.path.exists(image_save_path):
         os.makedirs(image_save_path)
