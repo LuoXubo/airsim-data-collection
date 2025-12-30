@@ -6,8 +6,8 @@ import time
 import cv2
 import os
 
-traj_dir = 'data\\trajectories'
-save_dir = 'data\\captured_images_trajectories_txt'
+traj_dir = 'data\\trajectories_forward'
+save_dir = 'data\\captured_images_trajectories_forward_txt'
 
 traj_files = sorted([f for f in os.listdir(traj_dir) if f.endswith('.txt')])
 
